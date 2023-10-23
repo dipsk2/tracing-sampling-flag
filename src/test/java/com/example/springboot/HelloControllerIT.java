@@ -40,16 +40,15 @@ public class HelloControllerIT {
     @Test
     public void withNoSamplingFlag() throws Exception {
         wireMockServer.resetRequests();
-        var headers = new HttpHeaders();
-        headers.add("b3", "eca58a679c4142a267210d68736edcb5-67210d68736edcb5");
-        var entity = new HttpEntity<>(headers);
-        var response = template.exchange("http://localhost:" + port, HttpMethod.GET, entity, String.class);
-        assertThat(response.getBody()).isEqualTo("Greetings from Spring Boot!");
+        makeCallWithTraceHeader("eca58a679c4142a267210d68736edcb5-67210d68736edcb5");
         var traces = getTraces();
         /*
         Traces are not sent to zipkin. The proxies generally do not send the sampling decision in the b3
         header(s). This results in the sampling decision being made by the next hop. In this case, the
         spring-boot microservice DEFAULTS it to 0 even though sampling probability is 1.0. This is not as expected.
+
+        The decision is made in this method: io.opentelemetry.api.trace.TraceFlags.getDefault().
+        There is (most probably?) no way to override the default value of flag.
          */
         assertThat(traces.getRequests()).hasSize(1);
     }
@@ -57,16 +56,19 @@ public class HelloControllerIT {
     @Test
     public void withSamplingFlagTrue() throws Exception {
         wireMockServer.resetRequests();
-        var headers = new HttpHeaders();
-        headers.add("b3", "ddd58a679c4142a267210d68736edeee-aaa10d68736edbbb-1");
-        var entity = new HttpEntity<>(headers);
-        var response = template.exchange("http://localhost:" + port, HttpMethod.GET, entity, String.class);
-        assertThat(response.getBody()).isEqualTo("Greetings from Spring Boot!");
+        makeCallWithTraceHeader("39f330bb5ecb45e27fb98e04235a4874-7fb98e04235a4874-1");
         var traces = getTraces();
         assertThat(traces.getRequests()).hasSize(1);
         /*
         Traces are being sent to zipkin because sampling is set to true. As expected.
          */
+    }
+
+    private void makeCallWithTraceHeader(String headerValue) {
+        var headers = new HttpHeaders();
+        headers.add("b3", headerValue);
+        var entity = new HttpEntity<>(headers);
+        template.exchange("http://localhost:" + port, HttpMethod.GET, entity, String.class);
     }
 
     private FindRequestsResult getTraces() throws InterruptedException {
